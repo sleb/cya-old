@@ -2,10 +2,16 @@ import { Combobox, Transition } from "@headlessui/react";
 import { ChevronUpDownIcon } from "@heroicons/react/20/solid";
 import { Fragment, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useRecoilValue } from "recoil";
 import { Game } from "../../model/Game";
-import { getGames } from "../../services/GameService";
+import { onGamesChange } from "../../services/GameService";
+import { userIdState } from "../../state/UserIdState";
 
 const GameSelect = () => {
+  // userId must be non-null. Protected by AuthRequired
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  const userId = useRecoilValue(userIdState)!;
+  const [games, setGames] = useState<Game[]>([]);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<Game[]>([]);
   const [selected, setSelected] = useState<Game | null>(null);
@@ -13,12 +19,23 @@ const GameSelect = () => {
 
   const handleSelect = (game: Game) => {
     setSelected(game);
-    navigate(`games/${game.id}`);
+    navigate(game.id);
   };
 
   useEffect(() => {
+    return onGamesChange(userId, setGames);
+  }, [userId]);
+
+  useEffect(() => {
+    const getGames = (query: string | undefined) => {
+      return query && query !== ""
+        ? games.filter((g) =>
+            g.name.toLowerCase().includes(query.toLowerCase())
+          )
+        : games;
+    };
     setResult(getGames(query));
-  }, [query]);
+  }, [query, games]);
 
   return (
     <Combobox value={selected} onChange={handleSelect}>
@@ -27,7 +44,7 @@ const GameSelect = () => {
           className="w-full rounded-md text-left outline-none ring-0 px-2"
           onChange={(event) => setQuery(event.target.value)}
           displayValue={(game: Game | null) => game?.name || ""}
-          placeholder="Select a game..."
+          placeholder={games.length === 0 ? "No games" : "Select a game..."}
         />
         <Combobox.Button className="absolute inset-y-0 right-0 flex items-center pr-2">
           <ChevronUpDownIcon className="h-5 w-5 text-slate-400" />
@@ -41,7 +58,7 @@ const GameSelect = () => {
           leaveTo="opacity-0"
           afterLeave={() => setQuery("")}
         >
-          <Combobox.Options className="absolute w-full bg-white/80 px-2 rounded-lg">
+          <Combobox.Options className="absolute w-full bg-white px-2 rounded-lg z-10 drop-shadow-md">
             {result.length === 0 && query !== "" ? (
               <div className="text-red-900">Nothing Found</div>
             ) : (

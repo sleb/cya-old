@@ -1,9 +1,12 @@
-import { Player } from "./Player";
+import { Card } from "./Card";
 
-export interface Game {
+export interface Game extends GameData {
   id: string;
+}
+
+export interface GameData {
   name: string;
-  seed: number;
+  deck: Card[];
   dateInSecondsFromEpoch: number;
-  players: Player[];
+  playerIds: string[];
 }

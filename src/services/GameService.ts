@@ -1,39 +1,91 @@
-import { Game } from "../model/Game";
+import {
+  CollectionReference,
+  DocumentData,
+  DocumentReference,
+  DocumentSnapshot,
+  SnapshotOptions,
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getFirestore,
+  onSnapshot,
+  query,
+  where,
+} from "firebase/firestore";
+import { app } from "../firebase";
+import { newDeck, shuffle } from "../model/Card";
+import { Game, GameData } from "../model/Game";
 
-const games: Game[] = [
-  {
-    id: "1",
-    dateInSecondsFromEpoch: 1693980582,
-    name: "You are Cruisin' for a Bruisin' my Friend",
-    players: [
-      { displayName: "Hen", id: "123" },
-      { displayName: "Abe", id: "124" },
-      { displayName: "Dad", id: "125" },
-      { displayName: "Mom", id: "126" },
-      { displayName: "Fred", id: "127" },
-    ],
+const gameConverter = {
+  toFirestore(data: GameData): DocumentData {
+    return { ...data };
   },
-  {
-    id: "2",
-    dateInSecondsFromEpoch: 1693000000,
-    name: "Thanksgiving '23",
-    deckSeed: 12003,
-    players: [
-      { displayName: "Hen", id: "123" },
-      { displayName: "Abe", id: "124" },
-      { displayName: "Dad", id: "125" },
-      { displayName: "Mom", id: "126" },
-      { displayName: "Fred", id: "127" },
-    ],
+  fromFirestore(
+    snapshot: DocumentSnapshot,
+    options: SnapshotOptions
+  ): GameData {
+    return snapshot.data(options) as GameData;
   },
-];
-
-export const getGames = (query: string | undefined) => {
-  return query && query !== ""
-    ? games.filter((g) => g.name.toLowerCase().includes(query.toLowerCase()))
-    : games;
 };
 
-export const getGame = (id: string): Game | undefined => {
-  return games.find((g) => g.id === id);
+const GAMES = "games";
+
+const gameRef = (gameId: string): DocumentReference<GameData> => {
+  const db = getFirestore(app);
+  return doc(db, GAMES, gameId).withConverter(gameConverter);
+};
+
+const gamesRef = (): CollectionReference<GameData> => {
+  const db = getFirestore(app);
+  return collection(db, GAMES).withConverter(gameConverter);
+};
+
+export const getGame = async (gameId: string): Promise<Game | undefined> => {
+  const docRef = gameRef(gameId);
+  const docSnap = await getDoc(docRef);
+  if (docSnap.exists()) {
+    return { id: docSnap.id, ...docSnap.data() };
+  }
+};
+
+export const deleteGame = async (gameId: string): Promise<void> => {
+  const docRef = gameRef(gameId);
+  return deleteDoc(docRef);
+};
+
+const createGame = async (gameData: GameData): Promise<string> => {
+  const collectionRef = gamesRef();
+  return (await addDoc(collectionRef, gameData)).id;
+};
+
+export const newGame = (name: string, uid: string): Promise<string> => {
+  const deck = newDeck();
+  shuffle(deck);
+
+  return createGame({
+    name,
+    deck,
+    dateInSecondsFromEpoch: Date.now() / 1000,
+    playerIds: [uid],
+  });
+};
+
+export const onGamesChange = (
+  userId: string,
+  cb: (games: Game[]) => void
+): (() => void) => {
+  const collectionRef = gamesRef();
+  const q = query(
+    collectionRef,
+    where("playerIds", "array-contains", userId)
+  ).withConverter(gameConverter);
+  return onSnapshot(q, (querySnap) => {
+    const games: Game[] = querySnap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    cb(games);
+  });
 };
